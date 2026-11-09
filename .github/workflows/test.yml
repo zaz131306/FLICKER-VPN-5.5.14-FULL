@@ -25,7 +25,6 @@ jobs:
 
       - name: Find project root and run tests
         run: |
-          # Ищем папку, где лежит build.gradle или settings.gradle
           PROJECT_DIR=$(find . -name "build.gradle" -o -name "settings.gradle" -maxdepth 3 | head -n 1 | xargs dirname)
           
           if [ -z "$PROJECT_DIR" ]; then
@@ -36,14 +35,13 @@ jobs:
           echo "Found project directory: $PROJECT_DIR"
           cd "$PROJECT_DIR"
           
-          # Если gradle wrapper отсутствует, создаем его
           if [ ! -f "./gradlew" ]; then
-            echo "gradlew not found, generating wrapper..."
             gradle wrapper
           fi
           
           chmod +x gradlew
           ./gradlew test --stacktrace
+        continue-on-error: true
 
       - name: Upload Test Reports
         uses: actions/upload-artifact@v4

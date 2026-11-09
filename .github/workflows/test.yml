@@ -22,10 +22,23 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
+          # Убрали cache: gradle, чтобы action не падал при поиске путей
+
+      - name: Check repository structure
+        run: |
+          echo "Current directory structure:"
+          ls -la
+          find . -maxdepth 3 -name "gradlew" -o -name "build.gradle" -o -name "settings.gradle"
 
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+          elif [ -f "$(find . -name gradlew | head -n 1)" ]; then
+            chmod +x $(find . -name gradlew | head -n 1)
+          else
+            echo "gradlew not found in root!"
+          fi
 
       - name: Run Unit Tests
         run: ./gradlew test --stacktrace

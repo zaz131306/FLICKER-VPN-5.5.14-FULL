@@ -1,0 +1,172 @@
+FLICKER VPN 5.5.14 — ПОЛНЫЙ ПАКЕТ
+собрано: 2026-11-01
+подпись AMO: add-on 3089117, version 5.5.14, version id 6651030, file id 5195129, status public
+id расширения: flicker-vpn@local.dev (не менялся — native host пускает его без правок)
+native host: FlickerVPN-Setup-5.5.4.exe (НЕ менялся: исходников хоста нет, все правки на стороне расширения)
+тесты: 111/111 (node --test tests/) + 21/21 (node --test regression/src/flicker-vpn/tests/js/)
+RED-проверка против 5.5.13: 9 из 11 новых тестов падают (2 проходят — это регрессионные стражи)
+пересборка: rm -rf ext && cp -r ../flicker-5.5.13/ext ext && python3 patch-5.5.14.py  (15 hunks)
+
+УСТАНОВКА: about:addons → шестерёнка → «Установить дополнение из файла…» →
+           flicker-vpn-5.5.14-SIGNED.xpi → перезапуск Firefox. Подробности:
+           INSTALL-FIX-5.5.14.txt
+
+Что исправлено (по 6-й диагностике пользователя: 5.5.13 в поле, хост 5.5.4,
+22:00:10 → 22:10:37, шесть смен ноды, проба 600 серверов за 6 мин 20 с):
+
+  Работает в поле, подтверждено этим дампом (правками не тронуто):
+     • stop-ack: шесть смен ноды подряд — ни одного «dbg: proxy=none» между
+       switch и connected;
+     • смена режима маршрутизации без рестарта туннеля (smart → all в 22:04:09);
+     • autoPort + сверка порта (1080 занят → хост слушает 1081 → перевооружение);
+     • рейтинг только по VPN-нодам (1805), локальные транспорты отдельно;
+     • восстановление из тупика: лестница ходит по нодам сама, карусели нет.
+
+  A. Браузер был вооружён на порту, где никто не слушает (главный дефект).
+     Шапка дампа 22:00:10: узел «Диагностика (direct)», статус connected,
+     «прокси вооружён 127.0.0.1:1080», host SOCKS «не слушает». Для локального
+     транспорта native host не поднимается и SOCKS-слушателя нет в принципе, но
+     applyProxyModeNow() вооружала ручной прокси на STATE.socksPort, а
+     perRequestDecision() гнала пер-реквест трафик туда же. Плюс
+     handleVerifyResult() «подтверждал» туннель, которого нет.
+     Теперь: protocol === "direct" (не DPI) → DIRECT до всякой маршрутизации;
+     отдельная идемпотентная ветка local-direct в applyProxyModeNow()
+     (setProxyNone, tunnelVerified = true, proxyMode = "local-direct",
+     журнал local-direct, broadcastUI directNode); verify для локального
+     транспорта — no-op.
+
+  B. HOLD держал мёртвый порт и продлевался пробным прогоном.
+     22:04:09 verify «туннель больше не подтверждён» → HOLD; 22:04:17 старт
+     пробы 600 серверов; пока хост её жевал, ветка probeRunning() на каждом
+     цикле вызывала markHoldProgress(«хост занят пробой серверов»), окно без
+     прогресса (120 c) не закрывалось — и браузер сидел на 1080, где никто не
+     слушал, до 22:06:06. Держать мёртвый порт — то же самое, что выбросить
+     прокси, только без интернета.
+     Теперь: endpointDead() = локальный транспорт ИЛИ native host не на связи
+     ИЛИ последний diagnose сказал socksListening=false (свежесть 60 c); при
+     endpointDead() удержание запрещено (canHold/wantHold), прокси
+     освобождается сразу, в журнале hold-refused, в логе хоста
+     «proxy: HOLD отменён (…) — мёртвый порт не держу»; проба прогрессом на
+     мёртвом конце не считается. HOLD на живом конце не тронут: окно без
+     прогресса 120 c, потолок 300 c — постоянной дыры в интернете нет.
+
+  C. Мёртвые ноды не определялись никогда.
+     22:06:47 и 22:07:34: «контрольный dial … socks5: connect отклонён (код
+     0x1)» → «tunnelAlive=false проигнорирован (SOCKS слушает, подряд 1,
+     трафик есть)». Правило 5.5.10 требовало 3 отказа подряд + 45 c + нулевой
+     трафик: серия обнуляется при каждой смене ноды (а ноды менялись каждые
+     20–40 c), а «нулевого трафика» не бывает — контрольные запросы самого
+     расширения идут через туннель (в шапке ↑0.00 ↓0.00 MB и рядом «трафик есть»).
+     Теперь вердикт по ДВУМ независимым подтверждениям: на tunnelAlive=false
+     расширение само гоняет контрольный запрос браузера через SOCKS. Не прошёл
+     → declareSoftDead() сразу (без 45 c, без нулевого трафика, без трёх
+     отказов) → нода в мёртвые, лестница уходит на другую. Прошёл → нода
+     рабочая, dial хоста игнорируем и пишем об этом в лог. Прежнее мягкое
+     правило сохранено как запасной путь и зовёт ту же declareSoftDead()
+     (кулдаун внутри, журнал soft-dead, noteTunnelDeath, recoverFromDeadTunnel).
+
+  D. Панель больше не врёт.
+     statusPayload.proxyBlockedReason — почему прокси не вооружён; dbg при смене
+     режима печатает фактический STATE.proxyMode; в диагностике options.js:
+     «Прокси браузера: не вооружён ← выбран локальный транспорт (НЕ VPN),
+     трафик идёт напрямую (<причина>)».
+
+  Честно о том, что расширением не чинится: проба дала 32 живых из 600 (~5 %),
+  в рейтинге доверенных 0, мёртвых 50, без истории 1755. Это состояние подписки
+  провайдера. 5.5.14 не оживляет мёртвые ноды — она перестаёт выдавать их за
+  живые, определяет смерть за секунды и уходит с них сама.
+
+Новые метки журнала: local-direct, hold-refused; soft-dead теперь ставится из
+двух источников (текст причины показывает, из какого).
+Прежние метки на месте: switch-stop-ack, tunnel-mode-noop,
+host-disconnect-recovery, port-shift, verify-stale, verify-orphan,
+verify-unconfirmed, restart-loop, switch-noop, tunnel-mode, hold-start,
+hold-expired, progress, stage, release.
+
+Новые тесты (все — сценарии из этого дампа):
+  tests/direct-transport.test.mjs   5 проверок (A, B: endpointDead, проба, HOLD)
+  tests/dead-node-verdict.test.mjs  3 проверки (C + регрессия 5.5.10)
+  tests/hold-refusal.test.mjs       3 проверки (B + регрессия 5.5.4.2)
+
+СОСТАВ (81 файлов)
+  7658844  b33ec4c5059f57ef2b55cca6a7f20b7feb3854bdfc5ae229f2d8fe49be668b13  FlickerVPN-Setup-5.5.4.exe
+     7336  75fce45bfd0bbf8df199ad5cf0cc6dcd065d8aafb26cbe653071cc458711b777  INSTALL-FIX-5.5.14.txt
+    18323  50c93dd3c9175e272e763f59de02ca430ba77888cf7815f1f4cd7ea6f2cdd179  README-FIX-5.5.14.md
+      827  c353d7890769e369249b1a1d7f53fdc1568e48d91e60d05ba98fdb9eaf658c79  ext/_locales/en/messages.json
+     1098  8ed42c5ab40fdae18b5c4c17c199184c7f17e9bc402118e187d9bdab67c8a084  ext/_locales/ru/messages.json
+   334719  f697533bffccb75801714d34163836a6334294d705d230e1100c06ca391e2281  ext/background.js
+     3976  f9b594ba38045db52d531145cc044c7e3d851c4f74b470e13d58823dfa623775  ext/icons/icon-128.png
+      453  5b396650704f6877ffa8b0e53f848f4fcb47ed10b5ea2dbb983a5ca25b73a16a  ext/icons/icon-16.png
+     1376  2c4d90906eb44ca1b45c8de0c6cd4f6775463489b27ffe41cd607808d5993856  ext/icons/icon-48.png
+    15191  56645b078b82a7053ddb59deb61ac94675a41f7bc6017b7f11c6180948e1a031  ext/lib/blocklist.js
+     1618  d8346e21811d69d56092c8b37a3066073ba10414e2bd477d3cf68ac77dad400b  ext/lib/data-amnezia_sites.json
+    23769  666be5a4c00c699d0b07d3391c950feba59df35d9a99e63e5c2042dd91cd6ee9  ext/lib/dpi.js
+     6872  2b059dc4af40f736a1fab6b625dfd2ec7ecad9b6c40a97a6bd17a204d74ed6ea  ext/lib/errors.js
+     8915  ea75a4ee35e27342f4737f0ba28141db47a9020f94436f724998a666b078e774  ext/lib/hy2-parser.js
+    11729  8c903f83ae575596ce07b66f1fb8d51898450acd8c9b1a4850c24989a2599fe3  ext/lib/probe-opts.js
+    10879  1bd358c075c2d050cef3477e965a9d6e0db00b06cf89fe4b15886f01ed002437  ext/lib/protocol.js
+    20828  ae1f462dd41cbaceeef931ed70ba536e85cb2212ea7106897f420b45dad9115b  ext/lib/rating.js
+    19223  61b9bb43d063ba01ac3fd8529dd4658fc3b1566b6149d28ef2f00942b35e764d  ext/lib/share-parser.js
+    12154  cf53c3354ec18635cbdb5bf5d1a541fdbe1062ca57882d0ba26570ef2bbfde14  ext/lib/sources.js
+    21717  2eadee1c822993fb776ac0557a2f4ecae9f29ca7ef59d9fbe4a793c749444adf  ext/lib/split-tunnel.js
+    14919  d1fe8fd47cff2b1a9c9fc78512a0cb9c7cabd997a70cd82bbd83f54e0e00c9eb  ext/lib/subscriptions.js
+     1093  b7d085b0d650e3179cdefebd5165b0d97b2d86b098c8892fcdde44f25f1128cf  ext/manifest.json
+    13032  69c696bacff96f030882e9645adfdd0a2e96078c6e0cd97b70abe7872e552b58  ext/options.html
+    21995  ac6136624f78b557d9d219748a153003b655120c388877928141441ad640a676  ext/options.js
+    14565  65ea3671a2f25f9a49212a12c011e98ff6b4dc1df5764f6bb510410ea4e56f36  ext/popup.css
+    29245  95d02cf4d7f634f80d3ff2924564a7b6e8a63d5396b400cfee37ac5b459569dc  ext/popup.html
+    77231  ac456ea379c1eadb5b4bd97bac653e5c6886425b76017461c96878ea6c113fad  ext/popup.js
+   229381  a14ef1f99ce957e6d6e7d813dcde4e10305fb6133fd357aee5f34789dd191aa7  flicker-vpn-5.5.14-SIGNED.xpi
+    19939  5db1b8ad345ee25bdeab32f19b0b59b966ce31fefe2d08951389494eea821256  patch-5.5.10.py
+    15128  3fcb8898e46dde599b663c058bde8c3d8f6f2a098fd16128d488c828cc42f27c  patch-5.5.11.py
+    48492  9a2e1636b54b59059fa9f5ad3556a4882f659934b0dbba02c19a941ef0a26aa4  patch-5.5.12.py
+    28410  f871132da461d4b095a2fb7edcf131ccb748e289752df2ae6a6d15418fb63269  patch-5.5.13.py
+    27819  a23a74760cf80bf6ed036616681399d8f8d5393a8ab54945f43ce0c81172491f  patch-5.5.14.py
+     6913  e8b264e222eb652fe41d96b521d90a64b22d951a650a9af96039a5e2705c0d60  patch-5.5.9-port.py
+    34281  e1557353c3da63d0fbaff3f53caef403457c755038c9bf4e1b40ec4f380776d9  patch-5.5.9.py
+     1618  d8346e21811d69d56092c8b37a3066073ba10414e2bd477d3cf68ac77dad400b  regression/src/flicker-vpn/lib/data-amnezia_sites.json
+    21569  f917265bcf35f9be88dae4895b429a8faf91d33708f6d353f6f8e95f343b6217  regression/src/flicker-vpn/lib/dpi.js
+     6872  2b059dc4af40f736a1fab6b625dfd2ec7ecad9b6c40a97a6bd17a204d74ed6ea  regression/src/flicker-vpn/lib/errors.js
+     8915  ea75a4ee35e27342f4737f0ba28141db47a9020f94436f724998a666b078e774  regression/src/flicker-vpn/lib/hy2-parser.js
+     6481  168e4153ff3ab4b6662adc91256f6926afb93fea2b6c497b888ffbbce41f07a9  regression/src/flicker-vpn/lib/protocol.js
+    14905  374b7c8575f4e43453bf077bfd67ab8840cc8e1184aed5d42c60a261d4f35966  regression/src/flicker-vpn/lib/rating.js
+    14564  e828a7c0cde09b94da774a21d9e9fa17a61c33cdc60128dcccbf2c94bff99059  regression/src/flicker-vpn/lib/share-parser.js
+    12154  cf53c3354ec18635cbdb5bf5d1a541fdbe1062ca57882d0ba26570ef2bbfde14  regression/src/flicker-vpn/lib/sources.js
+    21717  2eadee1c822993fb776ac0557a2f4ecae9f29ca7ef59d9fbe4a793c749444adf  regression/src/flicker-vpn/lib/split-tunnel.js
+    12246  c3cc1ad197ce7290291c97bffff9640421d96441909ab90bffe567d750aae136  regression/src/flicker-vpn/lib/subscriptions.js
+     4465  3ea3429a54633911b8feeba052447c8424cb90f37e1dc66c2d638331813b237f  regression/src/flicker-vpn/tests/js/dpi-engines.test.mjs
+     6215  38b9ed04a66d491152770d45da1de5c9b00c5abda62c72bd221ab0c9bb0edd3b  regression/src/flicker-vpn/tests/js/v5-modules.test.mjs
+     3308  1eb311ff5b0c903261f4527dd9c3f1995ed268900b1a8f3e309c181248f1adea  rollbacks/INSTALL-INFO.txt
+   133952  3aed50356f38e4594934ddcaff7b9eb5dfdd8f49a7361e7f4cc742ec738fe5be  rollbacks/flicker-vpn-5.4.0-signed.xpi
+   212469  61664a4cb1d6f9812521f3332c57227eb9f765794aaa976d62c783eb9f801b46  rollbacks/flicker-vpn-5.5.10-SIGNED.xpi
+   214516  9ade51792bce3bb7c5f4f55f740d8f8893bee57cfedba7bde2619e48398de3dc  rollbacks/flicker-vpn-5.5.11-SIGNED.xpi
+   222164  ed0a257698c531dacb7bf30a6f16c96bdcce381953cd6f4961ca1bd2a0dd9173  rollbacks/flicker-vpn-5.5.12-SIGNED.xpi
+   225612  252d1cb8db3396758cd2ed126cea4d616c49c177b3d6a123f7e4c13e9e6143a1  rollbacks/flicker-vpn-5.5.13-SIGNED.xpi
+   147709  0d18a4e0b060fc7ef4a2c5d425f883dc5b3a103eadfb6a3f6105a1b9bdec0d36  rollbacks/flicker-vpn-5.5.4-signed.xpi
+   153025  6949087b7635581822f262fd8ef5fbf2a7861971b7e2bdb0fc52102631eb845b  rollbacks/flicker-vpn-5.5.4.1-fix1-SIGNED.xpi
+   155145  5c175258657b14c4f8b82ac739faab215ccd92dbeadbfd58da115e6a5e7e40b5  rollbacks/flicker-vpn-5.5.4.2-hold-SIGNED.xpi
+   188958  7a6b2564d57c7fd8815186b2eced4888d921a895eff4e9aa9d1e16858e8891df  rollbacks/flicker-vpn-5.5.7-amo.xpi
+   201108  ec0afdd0e528a1d897d7b7ad2c6443fe4a6fdfbf733c48873bceec96279e5251  rollbacks/flicker-vpn-5.5.8-SIGNED.xpi
+   209771  85f8436c8df59530026ced0a84a3eea508c96eaedfb0554e84a44832ad5000bd  rollbacks/flicker-vpn-5.5.9-SIGNED.xpi
+     2907  7d79a291e39ae2403df85bfd5f0f6dca937133f527ee19df90e4612453a05ba8  sign/build-xpi.mjs
+      318  8dcd9bd83f83c9e7476e2ebef9e21e6104ae268af422c69b8d72dc9a9da0bf9c  sign/native-host-manifest.json
+    12834  aa8b88e52657a2dee70dd0e791810723c0cb29dc9546f37980c11b1b34d82197  tests/amneziawg.test.mjs
+    17004  afa6738b626dc92c2989e4fa02a3b851d2de24e39f78c75c52442f4d8ad84c35  tests/bg-harness.mjs
+     7525  6e638e36c10dc95149ace0ec41ac81fe8a680cc99a6542f9ed869e7537fc4a70  tests/dead-node-verdict.test.mjs
+    12088  08c1d0c1b665b4a7bdb175341ae3e2542221511d4ca0669fe7637032df5f67dc  tests/direct-transport.test.mjs
+    22147  964982b148fc89799b51340917f72c3ffdcbc1daec0f1cc192560fdb8cf9230e  tests/hold-progress.test.mjs
+     7282  7c35cf4280ccf160886cce7bfbebed57b27a15508accb1b3fac6d3ff7115ba5e  tests/hold-proxy.test.mjs
+     9097  24838cf36b779844c3b562a207e4a91e4b24c489d75c365bc78996b74942fa10  tests/hold-refusal.test.mjs
+     8145  d0515e6e261a12eddd4cedd0c22122f1f6c97076b68b37a63273a1d50ae4ad31  tests/mode-norestart.test.mjs
+    10662  53dc6c18efa0273fcd0aaa379e72fab98c0bd32045c9027429430163e64cc16e  tests/mode-off.test.mjs
+     9185  a1060dcecae3821c3d7b9913c8fccedd1812721aade03e9cacb2d370fb4abc25  tests/ping-filter.test.mjs
+     9309  2f5da386ad80910f49ded51a14a6aa3728f5cd824f288a6cc7ecf3103c8e9a6c  tests/port-shift.test.mjs
+     5672  53e06e842eb1610851bd1eecaa30cc5740448f34d9ceff7637ce68fa30bd3786  tests/rating-top.test.mjs
+    11268  92e388e0de56fdabc391884e3cd5400848b5ccc138cf182e4605223a05f62d27  tests/recovery-ladder.test.mjs
+    16115  4a7a569f04605c78c06bf9ff5b66888e835aff1b248864f0905ca38a74afb58c  tests/restart-loop.test.mjs
+    11315  50db34aab83c56514bd8a658351c6a6394bba35b61fec7b522d809f2f47331ff  tests/resume-direct.test.mjs
+     5865  bcd0bf6fe67d58abd634de7e79f2542df2b416a116b359b43049c538aac256cc  tests/smoke.test.mjs
+    13513  326eb146870418ef4959c4b990f32396290b1fa98704b53dd241a1af7fb6d4a8  tests/soft-liveness.test.mjs
+    13223  6a44a8c715bad8b0896ce6715cdd4b88c0ec3ac2cc2cebc08a4a5c5484aec6ca  tests/stop-ack.test.mjs
+    10011  7d93b7c77d367cfb8b172952a7f73578f95569c3f84902f9dad1a06b3ad077f4  tests/tunnel-recovery.test.mjs
+        0  ————————————————————————————————————————————————————————————————  MANIFEST.txt

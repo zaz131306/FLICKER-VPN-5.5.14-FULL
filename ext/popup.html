@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>FLICKER VPN Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="brand">
+        <span class="logo">⚡</span>
+        <div>
+          <div class="brand-name">FLICKER VPN</div>
+          <div class="brand-sub">PRO · VLESS Reality / WireGuard</div>
+        </div>
+      </div>
+      <div id="statusBadge" class="badge">DISCONNECTED</div>
+    </header>
+
+    <!-- TABS -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="connect" title="Подключение">🔌 Сеть</button>
+      <button class="tab" data-tab="servers" title="Серверы">🌐 Серверы</button>
+      <button class="tab" data-tab="advanced" title="Дополнительно">⚙️ Advanced</button>
+      <button class="tab" data-tab="wireguard" title="WireGuard и «матрёшка»">🧅 WireGuard</button>
+      <button class="tab" data-tab="stats" title="Статистика">📊 Статы</button>
+    </nav>
+
+    <!-- TAB: CONNECT -->
+    <section class="panel active" data-panel="connect">
+      <div class="server-card">
+        <div class="server-flag" id="currentFlag">🌍</div>
+        <div class="server-info">
+          <div class="server-name" id="currentName">Выберите сервер</div>
+          <div class="server-meta">
+            <span id="currentProto" class="chip proto">—</span>
+            <span id="currentPing" class="chip ping">— ms</span>
+            <span id="currentQuality" class="chip quality">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5: режим маршрутизации — что пускать через VPN -->
+      <div class="mode-line">
+        <span class="mode-label">🧭 Через VPN:</span>
+        <button id="tunnelModeChip" class="chip mode" title="Настроить маршрутизацию">Smart</button>
+        <span class="mode-hint" id="tunnelModeHint"></span>
+      </div>
+
+      <!-- v5.3: failsafe-статус и аварийный возврат прокси -->
+      <div id="proxyWarn" class="proxy-warn hidden">
+        <span id="proxyWarnText"></span>
+        <button id="releaseProxyBtn" class="btn-panic" title="Работает всегда, даже если интернет не грузится">
+          🆘 Вернуть прокси браузеру
+        </button>
+      </div>
+
+      <button id="connectBtn" class="btn-connect">
+        <span class="btn-icon">▶</span>
+        <span class="btn-label">ПОДКЛЮЧИТЬСЯ</span>
+      </button>
+
+      <div class="quick-stats">
+        <div class="stat">
+          <div class="stat-label">Скорость</div>
+          <div class="stat-value" id="speedVal">0 Mbps</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Трафик</div>
+          <div class="stat-value" id="trafficVal">0 MB</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Пинг</div>
+          <div class="stat-value" id="pingVal">— ms</div>
+        </div>
+      </div>
+
+      <div class="features">
+        <label class="feature-toggle">
+          <input type="checkbox" id="autoSelectToggle">
+          <span>🎯 Авто-выбор лучшего сервера</span>
+        </label>
+        <label class="feature-toggle">
+          <input type="checkbox" id="autoSwitchToggle" checked>
+          <span>🔁 Авто-переключение, если сервер умер</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- TAB: SERVERS -->
+    <section class="panel" data-panel="servers">
+      <div class="toolbar">
+        <input type="text" id="serverSearch" placeholder="🔍 Поиск сервера...">
+        <select id="protoFilter">
+          <option value="all">Все протоколы</option>
+          <option value="vless">VLESS</option>
+          <option value="trojan">Trojan</option>
+          <option value="vmess">VMess</option>
+          <option value="shadowsocks">Shadowsocks</option>
+          <option value="wireguard">WireGuard</option>
+          <option value="hysteria2">Hysteria 2 (эксперим.)</option>
+          <option value="direct">Direct</option>
+        </select>
+      </div>
+      <div class="refresh-line">
+        <span id="serversCountVal" class="meta"></span>
+        <span id="lastRefreshVal" class="meta"></span>
+      </div>
+      <div id="subsInfoLine" class="refresh-line">
+        <span id="subsInfoVal" class="meta"></span>
+        <button id="subsSettingsBtn" class="link-btn" title="Управление источниками подписок">⚙ источники</button>
+        <button id="breakReportBtn" class="link-btn" title="Скопировать полный отчёт об обрывах (версии, удержание, журнал событий)">📋 отчёт</button>
+      </div>
+      <div id="probeProgress" class="probe-progress hidden">
+        <div class="probe-bar"><div id="probeBarFill" class="probe-bar-fill"></div></div>
+        <span id="probeProgressText" class="meta">Проверка…</span>
+        <button id="cancelProbeBtn" class="link-btn danger">отменить</button>
+      </div>
+      <div class="list-options">
+        <label class="switch inline">
+          <input type="checkbox" id="hideDeadToggle" checked>
+          <span>Скрывать недоступные</span>
+        </label>
+        <label class="switch inline">
+          <input type="checkbox" id="autoRefreshToggle" checked>
+          <span>Авто-обновление</span>
+        </label>
+      </div>
+      <!-- FIX(5.5.5): отбор по ЭФФЕКТИВНОСТИ и постоянный блок мусорных нод -->
+      <div class="group tight">
+        <h3>⚡ Отбор серверов</h3>
+        <div class="row-input">
+          <label for="maxPingInput">Отсекать медленнее, мс</label>
+          <input type="number" id="maxPingInput" min="50" max="20000" step="50" value="1200">
+        </div>
+        <p class="note">Узел, ответивший медленнее порога, <b>не считается живым</b>:
+        он не участвует в автовыборе и автопереключении, а в списке уходит вниз.
+        Превышение порога вдвое (или дважды подряд) — постоянный блок.</p>
+        <div id="blockedLine" class="refresh-line">
+          <span id="blockedVal" class="meta">В блоке: 0</span>
+          <button id="showBlockedBtn" class="link-btn">показать</button>
+          <button id="clearBlockedBtn" class="link-btn danger">разблокировать все</button>
+        </div>
+        <p class="note">Заблокированные узлы хранятся по отпечатку
+        (адрес + порт + протокол + ключ), поэтому обновление подписки не может
+        вернуть их в список — ни под прежним именем, ни под новым.</p>
+      </div>
+      <div id="blockedList" class="server-list hidden"></div>
+      <!-- FIX(5.5.8): что делает восстановление прямо сейчас и чем отфильтрован список -->
+      <div id="recoveryHint" class="meta hidden"></div>
+      <!-- FIX(5.5.9): «Диагностика (direct)» и DPI-обход — это НЕ VPN. По
+           диагностике пользователь сидел именно на таком узле: статус
+           «подключено», прокси вооружён, а трафик идёт напрямую. -->
+      <div id="directWarn" class="proxy-warn hidden" style="border-color:#e2b400;background:#2a2410">
+        <span id="directWarnText"></span>
+      </div>
+      <div id="serverList" class="server-list"></div>
+      <button id="refreshSubsBtn" class="btn-secondary accent">📥 Обновить подписку</button>
+      <button id="checkAllBtn" class="btn-secondary accent">✅ Проверить все</button>
+      <button id="addServerBtn" class="btn-secondary">+ Добавить свой сервер</button>
+      <button id="loadExamplesBtn" class="btn-secondary">📦 Примеры (не подключаются)</button>
+    </section>
+
+    <!-- TAB: ADVANCED -->
+    <section class="panel" data-panel="advanced">
+      <div class="group">
+        <h3>🧭 Что пускать через VPN</h3>
+        <select id="tunnelMode">
+          <option value="smart">Smart — зарубежное через VPN, российское напрямую</option>
+          <option value="blocked">Только заблокированное — минимальный расход ноды</option>
+          <option value="all">Всё через VPN — полный туннель</option>
+          <option value="off">Ничего — трафик идёт напрямую</option>
+        </select>
+        <p class="note" id="tunnelModeNote"></p>
+        <div class="mode-stats" id="tunnelModeStats"></div>
+        <p class="note">На бесплатных нодах режимы <b>Smart</b> и
+        <b>Только заблокированное</b> дают заметный прирост скорости: через
+        перегруженный чужой сервер идёт лишь то, что действительно заблокировано,
+        а российские сервисы, банки и почта работают напрямую.</p>
+      </div>
+
+      <div class="group">
+        <h3>🔌 Обрыв туннеля</h3>
+        <label class="switch">
+          <input type="checkbox" id="holdProxyToggle" checked>
+          <span>Держать прокси и чинить на месте (не отдавать браузеру)</span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="strictLivenessToggle">
+          <span>Строгая проверка живости (как в 5.5.x)</span>
+        </label>
+        <p class="note">Выключено = поведение 5.4.0: туннель жив, пока SOCKS слушает.
+        Хостовый контрольный dial (tunnelAlive) — только предупреждение. В 5.5.x
+        он стал приговором: 10 c × 3 цели на бесплатной ноде не успевают, и
+        расширение рвало рабочий туннель. Включайте, только если хотите прежнюю
+        строгость.</p>
+        <div class="row-input">
+          <label for="holdMaxInput">Держать прокси при обрыве, с</label>
+          <input type="number" id="holdMaxInput" min="15" max="600" step="15" value="120">
+        </div>
+        <p class="note">При обрыве расширение НЕ возвращает прокси браузеру: трафик
+        остаётся на SOCKS туннеля, пока нода поднимается заново. Если за отведённое
+        время починить не удалось, прокси честно возвращается браузеру — вечной дыры
+        в интернет нет. При включённом kill switch вместо возврата трафик
+        блокируется: «лучше без интернета, чем мимо VPN».</p>
+        <p class="note">Без галки — прежнее поведение: «Туннель не работает — прокси
+        возвращён браузеру», трафик идёт напрямую. Кнопка «Вернуть прокси» работает
+        всегда.</p>
+      </div>
+
+      <div class="group">
+        <h3>🛑 Kill Switch</h3>
+        <label class="switch">
+          <input type="checkbox" id="killSwitchEnabled">
+          <span>Блокировать весь трафик при обрыве</span>
+        </label>
+      </div>
+
+      <div class="group">
+        <h3>🛡 Утечки</h3>
+        <label class="switch">
+          <input type="checkbox" id="bypassSystemProxy" checked>
+          <span>Не использовать системный прокси</span>
+        </label>
+        <p class="note">Когда VPN выключен или идёт смена сервера, трафик идёт
+        напрямую, а не через HTTP-прокси из настроек системы. В версии 4 при
+        переключении серверов маршрутизация снималась и Firefox уходил в
+        системный прокси — отсюда утечка. Снимайте галку, только если без
+        системного прокси у вас вообще нет доступа в сеть.</p>
+      </div>
+
+      <div class="group">
+        <h3>🔀 Split Tunneling</h3>
+        <label class="switch">
+          <input type="checkbox" id="splitTunnelingEnabled">
+          <span>Исключения для доменов (мимо VPN)</span>
+        </label>
+        <textarea id="excludedDomains" placeholder="example.com&#10;test.org" rows="3"></textarea>
+      </div>
+
+      <div class="group">
+        <h3>🧪 Экспериментальное</h3>
+        <label class="switch">
+          <input type="checkbox" id="experimentalUdpToggle">
+          <span>UDP-протоколы (Hysteria 2) — запасной стек</span>
+        </label>
+        <p class="note">По умолчанию выключено: основной стек — TCP/443
+        (VLESS+Reality, Trojan). Включение добавляет HY2-источники подписок
+        и протокол Hysteria 2 в форму сервера.</p>
+      </div>
+
+      <button id="saveAdvanced" class="btn-primary">💾 Сохранить настройки</button>
+    </section>
+
+    <!-- TAB: WIREGUARD (включая «матрёшку» WG-в-VLESS) -->
+    <section class="panel" data-panel="wireguard">
+      <div class="group">
+        <h3>🧅 WireGuard-туннель</h3>
+        <p class="note">Пользовательский WireGuard: ключи из <code>wg genkey</code>
+        или конфига вашего провайдера/VPS. Публичных WG-подписок не существует —
+        это стек для собственного сервера.</p>
+        <div class="row"><label>Endpoint (хост)</label><input id="wgHost" type="text" placeholder="vpn.example.com"></div>
+        <div class="row"><label>Порт</label><input id="wgPort" type="number" value="51820" min="1" max="65535"></div>
+        <div class="row"><label>Приватный ключ</label><input id="wgPrivateKey" type="password" placeholder="client private key"></div>
+        <div class="row"><label>Публичный ключ пира</label><input id="wgPeerKey" type="password" placeholder="server public key"></div>
+        <div class="row"><label>Pre-Shared Key</label><input id="wgPsk" type="text" placeholder="(опционально)"></div>
+        <div class="row"><label>Мой адрес (CIDR)</label><input id="wgAddress" type="text" placeholder="10.221.0.2/32"></div>
+        <div class="row"><label>AllowedIPs</label><input id="wgAllowedIps" type="text" value="0.0.0.0/0, ::/0"></div>
+        <div class="row"><label>MTU</label><input id="wgMtu" type="number" value="1280" min="576" max="1500"></div>
+        <div class="row"><label>Reserved (0,0,0)</label><input id="wgReserved" type="text" placeholder="(опционально)"></div>
+      </div>
+
+      <div class="group">
+        <h3>🪆 «Матрёшка»: WireGuard внутри VLESS/Trojan</h3>
+        <label class="switch">
+          <input type="checkbox" id="wgDetourEnabled">
+          <span>Туннелировать WG через VLESS/Trojan (TCP/443)</span>
+        </label>
+        <p class="note">WG-пакеты идут внутри VLESS+Reality-соединения:
+        снаружи видно только TLS 1.3 к порту 443. Серверная сторона —
+        sing-box/xray с VLESS-inbound и WireGuard-endpoint (конфиг в README).</p>
+        <p class="note warn">⚠ Медленнее чистого VLESS: двойная инкапсуляция
+        (WG+VLESS) и userspace-WG дают потолок ~200–300 Мбит/с на 2 ядрах CPU
+        (локальный стенд: 223 Мбит/с против 16 700 Мбит/с у чистого VLESS)
+        и +0,5–1 мс латентности. Если канал уже этого потолка — разница
+        незаметна; если нужна максимальная скорость — используйте чистый
+        VLESS+Reality без детура.</p>
+        <div class="row"><label>Протокол детура</label>
+          <select id="wgDetourProto">
+            <option value="vless">VLESS (+Reality)</option>
+            <option value="trojan">Trojan</option>
+          </select>
+        </div>
+        <div class="row"><label>Сервер детура</label><input id="wgDetourHost" type="text" placeholder="vps.example.com"></div>
+        <div class="row"><label>Порт детура</label><input id="wgDetourPort" type="number" value="443" min="1" max="65535"></div>
+        <div id="wgDetourVlessFields">
+          <div class="row"><label>UUID</label><input id="wgDetourUuid" type="text"></div>
+          <div class="row"><label>Flow (Vision)</label>
+            <select id="wgDetourFlow">
+              <option value="">без Vision</option>
+              <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+            </select>
+          </div>
+          <div class="row"><label>Reality pbk</label><input id="wgDetourPbk" type="text"></div>
+          <div class="row"><label>Reality sid</label><input id="wgDetourSid" type="text"></div>
+          <div class="row"><label>SNI</label><input id="wgDetourSni" type="text" placeholder="www.microsoft.com"></div>
+          <div class="row"><label>uTLS-фингерпринт</label>
+            <select id="wgDetourFp">
+              <option value="chrome">chrome</option>
+              <option value="firefox">firefox</option>
+              <option value="safari">safari</option>
+              <option value="edge">edge</option>
+              <option value="ios">ios</option>
+              <option value="random">random</option>
+            </select>
+          </div>
+        </div>
+        <div id="wgDetourTrojanFields" class="hidden">
+          <div class="row"><label>Пароль</label><input id="wgDetourPassword" type="password"></div>
+          <div class="row"><label>SNI</label><input id="wgDetourTrojanSni" type="text"></div>
+        </div>
+        <div class="row"><label>Название</label><input id="wgName" type="text" placeholder="Мой WG (матрёшка)"></div>
+      </div>
+
+      <button id="saveWireguardBtn" class="btn-primary">💾 Сохранить WireGuard-сервер</button>
+      <div id="wgStatus" class="note"></div>
+    </section>
+
+    <!-- TAB: STATS -->
+    <section class="panel" data-panel="stats">
+      <div class="stat-grid">
+        <div class="stat-big">
+          <div class="stat-label">Аптайм</div>
+          <div class="stat-value" id="uptimeVal">—</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Средний RTT</div>
+          <div class="stat-value" id="rttVal">— ms</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Отправлено</div>
+          <div class="stat-value" id="sentVal">0 MB</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Получено</div>
+          <div class="stat-value" id="recvVal">0 MB</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Потери</div>
+          <div class="stat-value" id="dropVal">0</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Качество связи</div>
+          <div class="stat-value" id="qualityVal">—</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Протокол</div>
+          <div class="stat-value" id="protoVal">—</div>
+        </div>
+        <div class="stat-big">
+          <div class="stat-label">Native host</div>
+          <div class="stat-value" id="nativeVal">offline</div>
+        </div>
+      </div>
+      <canvas id="speedChart" width="360" height="120"></canvas>
+    </section>
+
+    <footer class="footer">
+      <span id="verVal" title="Версия из manifest.json">—</span>
+      <span id="footerInfo">SOCKS5 127.0.0.1:1080</span>
+      <span id="nativeStatus" class="native-dot offline" title="Native host"></span>
+    </footer>
+  </div>
+
+  <!-- MODAL: Add server -->
+  <div id="serverModal" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="mTitle">Новый сервер</h3>
+      <div class="row"><label>Название</label><input id="mName" type="text" placeholder="Мой сервер"></div>
+      <div class="row"><label>Хост</label><input id="mHost" type="text" placeholder="vpn.example.com"></div>
+      <div class="row"><label>Порт</label><input id="mPort" type="number" value="443" min="1" max="65535"></div>
+      <div class="row">
+        <label>Протокол</label>
+        <select id="mProto">
+          <option value="vless">VLESS (+Reality)</option>
+          <option value="trojan">Trojan (TLS)</option>
+          <option value="vmess">VMess</option>
+          <option value="shadowsocks">Shadowsocks</option>
+          <option value="wireguard">WireGuard</option>
+          <option value="direct">Direct (диагностика)</option>
+          <option value="hysteria2" id="mProtoHy2" class="hidden">Hysteria 2 (эксперим., UDP)</option>
+        </select>
+      </div>
+
+      <!-- секции по протоколам -->
+      <div data-proto="vless vmess">
+        <div class="row"><label>UUID</label><input id="mUuid" type="text"></div>
+      </div>
+      <div data-proto="vless">
+        <div class="row"><label>Flow (Vision)</label>
+          <select id="mFlow">
+            <option value="">без Vision</option>
+            <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+          </select>
+        </div>
+        <div class="row"><label>Reality pbk</label><input id="mPbk" type="text" placeholder="публичный ключ Reality"></div>
+        <div class="row"><label>Reality sid</label><input id="mSid" type="text"></div>
+        <div class="row"><label>uTLS-фингерпринт</label>
+          <select id="mFp">
+            <option value="chrome">chrome</option>
+            <option value="firefox">firefox</option>
+            <option value="safari">safari</option>
+            <option value="edge">edge</option>
+            <option value="ios">ios</option>
+            <option value="random">random</option>
+          </select>
+        </div>
+      </div>
+      <div data-proto="trojan shadowsocks hysteria2">
+        <div class="row"><label>Пароль</label><input id="mAuth" type="password"></div>
+      </div>
+      <div data-proto="vmess">
+        <div class="row"><label>Шифрование</label>
+          <select id="mCipher">
+            <option value="auto">auto</option>
+            <option value="aes-128-gcm">aes-128-gcm</option>
+            <option value="chacha20-poly1305">chacha20-poly1305</option>
+            <option value="none">none</option>
+          </select>
+        </div>
+      </div>
+      <div data-proto="shadowsocks">
+        <div class="row"><label>Метод</label><input id="mSsMethod" type="text" placeholder="2022-blake3-aes-128-gcm"></div>
+      </div>
+      <div data-proto="vless trojan vmess">
+        <div class="row"><label>SNI</label><input id="mSni" type="text" placeholder="(server name для TLS)"></div>
+        <div class="row"><label>Транспорт</label>
+          <select id="mTransportType">
+            <option value="">TCP (raw)</option>
+            <option value="ws">WebSocket</option>
+            <option value="grpc">gRPC</option>
+            <option value="http">HTTP</option>
+            <option value="httpupgrade">HTTPUpgrade</option>
+          </select>
+        </div>
+        <div class="row"><label>Путь (ws/http)</label><input id="mTransportPath" type="text" placeholder="/"></div>
+        <div class="row"><label>Host / serviceName</label><input id="mTransportHost" type="text"></div>
+      </div>
+      <div data-proto="wireguard">
+        <div class="row"><label>Приватный ключ</label><input id="mWgPriv" type="password"></div>
+        <div class="row"><label>Публичный ключ пира</label><input id="mWgPub" type="password"></div>
+        <div class="row"><label>Мой адрес (CIDR)</label><input id="mWgAddr" type="text" placeholder="10.221.0.2/32"></div>
+        <div class="row"><label>AllowedIPs</label><input id="mWgAllowed" type="text" value="0.0.0.0/0, ::/0"></div>
+        <!-- FIX(5.5.8): AmneziaWG — WireGuard с обфускацией. «Голый» WG DPI
+             распознаёт по handshake и рвёт: отсюда бесконечные обрывы туннеля. -->
+        <div class="row"><label>AmneziaWG: Jc / Jmin / Jmax</label>
+          <input id="mWgJc" type="number" min="0" max="65535" placeholder="5" style="width:31%">
+          <input id="mWgJmin" type="number" min="0" placeholder="10" style="width:31%">
+          <input id="mWgJmax" type="number" min="0" placeholder="100" style="width:31%">
+        </div>
+        <div class="row"><label>AmneziaWG: S1 / S2</label>
+          <input id="mWgS1" type="number" min="0" placeholder="0" style="width:48%">
+          <input id="mWgS2" type="number" min="0" placeholder="0" style="width:48%">
+        </div>
+        <div class="row"><label>AmneziaWG: H1 / H2 / H3 / H4</label>
+          <input id="mWgH1" type="number" min="0" max="4294967295" placeholder="H1" style="width:24%">
+          <input id="mWgH2" type="number" min="0" max="4294967295" placeholder="H2" style="width:24%">
+          <input id="mWgH3" type="number" min="0" max="4294967295" placeholder="H3" style="width:24%">
+          <input id="mWgH4" type="number" min="0" max="4294967295" placeholder="H4" style="width:24%">
+        </div>
+        <div class="row"><label>Или вставьте готовый .conf (WireGuard / AmneziaWG)</label>
+          <textarea id="mWgConf" rows="4" placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = 10.221.0.2/32&#10;Jc = 5&#10;Jmin = 10&#10;Jmax = 100&#10;S1 = 32&#10;S2 = 17&#10;H1 = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;AllowedIPs = 0.0.0.0/0&#10;Endpoint = 1.2.3.4:54321"></textarea>
+        </div>
+        <button id="mWgParseConf" class="btn-secondary" type="button">📥 Разобрать конфиг и заполнить поля</button>
+        <p class="note">AmneziaWG = WireGuard с обфускацией (Jc/Jmin/Jmax — мусорные пакеты перед handshake, S1/S2 — подмена размера, H1..H4 — подмена констант заголовка): DPI его не распознаёт, туннель не рвётся. Свой сервер ставится одной командой (bivlked/amneziawg-installer). Параметры применяются, только если native host объявил поддержку AmneziaWG — иначе расширение честно скажет об этом, а не сделает вид, что обфускация работает.</p>
+        <p class="note">«Матрёшка» (WG через VLESS) настраивается на вкладке WireGuard.</p>
+      </div>
+      <div data-proto="hysteria2">
+        <div class="row"><label>Обфускация</label>
+          <select id="mObfs">
+            <option value="none">Отключена</option>
+            <option value="salamander">Salamander</option>
+          </select>
+        </div>
+        <div class="row"><label>Пароль обфускации</label><input id="mObfsPass" type="text"></div>
+      </div>
+
+      <div id="mWarn" class="modal-warn hidden"></div>
+      <label class="switch" data-proto="vless trojan vmess hysteria2">
+        <input type="checkbox" id="mInsecure">
+        <span>Не проверять сертификат (self-signed)</span>
+      </label>
+      <div class="actions">
+        <button id="mCancel" class="btn-secondary">Отмена</button>
+        <button id="mSave" class="btn-primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

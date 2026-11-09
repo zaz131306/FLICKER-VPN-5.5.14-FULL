@@ -1,0 +1,86 @@
+[
+    {
+        "hostname": "avito.ru",
+        "ip": "176.114.124.24"
+    },
+    {
+        "hostname": "bitwarden.com",
+        "ip": "151.101.129.91"
+    },
+    {
+        "hostname": "edumsko.ru",
+        "ip": "51.250.54.24"
+    },
+    {
+        "hostname": "egais.ru",
+        "ip": "212.164.137.22"
+    },
+    {
+        "hostname": "emias.info",
+        "ip": "82.202.189.136"
+    },
+    {
+        "hostname": "emias.ru",
+        "ip": "82.202.189.136"
+    },
+    {
+        "hostname": "gosuslugi.ru",
+        "ip": "213.59.254.7"
+    },
+    {
+        "hostname": "gov.ru",
+        "ip": "95.173.128.89"
+    },
+    {
+        "hostname": "lemanapro.ru",
+        "ip": "185.65.151.100"
+    },
+    {
+        "hostname": "mos.ru",
+        "ip": "94.79.51.170"
+    },
+    {
+        "hostname": "my.mos.ru",
+        "ip": "212.11.151.57"
+    },
+    {
+        "hostname": "myfin.by",
+        "ip": "95.130.85.164"
+    },
+    {
+        "hostname": "nalog.ru",
+        "ip": "37.220.164.100"
+    },
+    {
+        "hostname": "nix.ru",
+        "ip": "91.233.230.52"
+    },
+    {
+        "hostname": "rzd.ru",
+        "ip": "212.164.138.122"
+    },
+    {
+        "hostname": "sibmama.ru",
+        "ip": "46.61.143.6"
+    },
+    {
+        "hostname": "www.gosuslugi.ru",
+        "ip": "109.207.1.118"
+    },
+    {
+        "hostname": "www.invitro.ru",
+        "ip": "185.129.103.93"
+    },
+    {
+        "hostname": "www.mos.ru",
+        "ip": "94.79.51.170"
+    },
+    {
+        "hostname": "www.pochta.ru",
+        "ip": "212.164.140.129"
+    },
+    {
+        "hostname": "my.mos.ru",
+        "ip": "212.11.151.56"
+    }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "com.flicker.vpn",
+  "description": "FLICKER VPN native messaging host (sing-box tunnel + SOCKS5)",
+  "path": "C:\\Users\\ТВОЁ_ИМЯ\\AppData\\Local\\flicker-vpn\\flicker-host.exe",
+  "type": "stdio",
+  "allowed_extensions": [
+    "flicker-vpn@local.dev",
+    "ТВОЙ-ID-ИЗ-AMO@example.com"
+  ]
+}

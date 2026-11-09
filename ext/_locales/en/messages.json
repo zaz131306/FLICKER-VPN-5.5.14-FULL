@@ -1,0 +1,34 @@
+{
+  "extensionName": {
+    "message": "FLICKER VPN Pro",
+    "description": "Extension name"
+  },
+  "extensionDescription": {
+    "message": "VLESS Reality / Trojan / WireGuard with smart routing, node rating and kill switch",
+    "description": "Extension description"
+  },
+  "connect": {
+    "message": "CONNECT",
+    "description": "Connect button"
+  },
+  "disconnect": {
+    "message": "DISCONNECT",
+    "description": "Disconnect button"
+  },
+  "connected": {
+    "message": "CONNECTED",
+    "description": "Connected status"
+  },
+  "connecting": {
+    "message": "CONNECTING...",
+    "description": "Connecting status"
+  },
+  "disconnected": {
+    "message": "DISCONNECTED",
+    "description": "Disconnected status"
+  },
+  "killSwitchActive": {
+    "message": "KILL SWITCH",
+    "description": "Kill switch status"
+  }
+}

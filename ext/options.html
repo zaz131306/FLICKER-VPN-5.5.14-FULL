@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>FLICKER VPN — Настройки</title>
+  <style>
+    :root {
+      --bg: #0b0f1a; --bg-3: #1a2236; --accent: #5b8cff;
+      --accent-2: #00e5a0; --danger: #ff5470; --text: #e6ecff;
+      --muted: #8892b0; --border: #223049;
+    }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px; margin: 40px auto; padding: 20px;
+      background: var(--bg); color: var(--text); font-size: 14px;
+    }
+    h1 { color: var(--accent); font-size: 22px; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    .group {
+      background: var(--bg-3); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px; margin-bottom: 20px;
+    }
+    button {
+      background: var(--accent); color: white; border: none;
+      padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;
+    }
+    button:hover { background: #3a6ae0; }
+    button.danger { background: var(--danger); }
+    button.danger:hover { background: #d03050; }
+    input[type="number"] {
+      background: #121827; color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px; width: 100px; font-size: 14px;
+    }
+    .row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+    .row label { color: var(--muted); }
+    .diag-out.cmd {
+      font-family: ui-monospace, Consolas, "Courier New", monospace;
+      white-space: pre-wrap; word-break: break-all; user-select: all;
+    }
+    .diag-out.ok { border-color: #2ea043; color: #7ee2a8; }
+    .diag-out.err { border-color: #d1242f; color: #ff9ba3; }
+    .diag-out {
+      background: #121827; border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 12px; white-space: pre-wrap; min-height: 60px; color: var(--muted);
+      margin-top: 10px;
+    }
+    .ok { color: var(--accent-2); }
+    .bad { color: var(--danger); }
+    code { background: #121827; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    ul { color: var(--muted); line-height: 1.7; }
+    .muted { color: var(--muted); }
+    .subs-list { display: flex; flex-direction: column; gap: 8px; }
+    .sub-row {
+      display: flex; align-items: center; gap: 10px;
+      background: #121827; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .sub-row .sub-info { flex: 1; min-width: 0; }
+    .sub-row .sub-name { font-weight: 600; font-size: 13px; }
+    .sub-row .sub-url {
+      font-size: 11px; color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sub-row .sub-state { font-size: 11px; color: var(--muted); text-align: right; flex-shrink: 0; }
+    .sub-row select {
+      background: #121827; color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px; font-size: 12px;
+    }
+    .subs-urls {
+      width: 100%; background: #121827; color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px; font-size: 12px; font-family: ui-monospace, Consolas, monospace;
+      box-sizing: border-box;
+    }
+    button.secondary { background: var(--bg-3); border: 1px solid var(--border); }
+    button.secondary:hover { border-color: var(--accent); background: var(--bg-3); }
+  </style>
+</head>
+<body>
+  <h1>⚡ FLICKER VPN Pro — Настройки</h1>
+
+  <div class="group">
+    <h2>📡 Подписки (автопоиск серверов)</h2>
+    <p class="muted">
+      Расширение скачивает бесплатные подписки Hysteria 2, парсит ссылки
+      <code>hysteria2://</code> и проверяет каждый узел в три этапа:
+      TCP → QUIC prescan → HTTP через туннель (gstatic 204 + cloudflare 200).
+      В списке остаются только живые; задержка — реальная, медиана проб через туннель.
+    </p>
+    <div id="subsList" class="subs-list"></div>
+
+    <h2 style="margin-top:16px">URL подписки (можно несколько)</h2>
+    <textarea id="customSubs" rows="3" class="subs-urls"
+      placeholder="https://example.com/sub/hysteria2.txt&#10;https://example.com/other-sub.txt"></textarea>
+    <p class="muted">По одному URL в строке. Формат: plain-текст или base64 со ссылками
+      <code>hysteria2://</code> / <code>hy2://</code>.</p>
+
+    <div class="row" style="margin-top:10px">
+      <button id="saveSubsBtn">Сохранить источники</button>
+      <button id="refreshSubsBtn" class="secondary">📥 Обновить подписки сейчас</button>
+    </div>
+    <div id="subsOut" class="diag-out">Источник: встроенные (RU-списки ежечасно, мировые агрегаторы раз в 6–24 ч) + свои + производные из мета-источника. Раз в 10 минут допроверяются только новые и протухшие ноды — доверенные не прозваниваются.</div>
+  </div>
+
+  <div class="group">
+    <h2>🛡 DPI-обход (локально, без сервера)</h2>
+    <p class="muted" id="dpiDesc"></p>
+
+    <div class="row">
+      <label for="dpiPort">Порт ciadpi:</label>
+      <input type="number" id="dpiPort" min="1" max="65535" value="1081">
+    </div>
+    <div class="row">
+      <label for="dpiPreset">Стратегия:</label>
+      <select id="dpiPreset"></select>
+    </div>
+    <div class="row">
+      <label for="dpiArgs">Свои аргументы (пусто = пресет):</label>
+      <textarea id="dpiArgs" rows="2" class="subs-urls" spellcheck="false"></textarea>
+    </div>
+    <div id="dpiArgsMsg" class="diag-out"></div>
+
+    <p class="muted"><strong>1.</strong> Скачай <code>byedpi-*-x86_64-w64.zip</code>
+    с <a href="https://github.com/hufrea/byedpi/releases" target="_blank" rel="noreferrer">github.com/hufrea/byedpi/releases</a>
+    (внутри <code>ciadpi.exe</code>, 129 КБ, лицензия MIT) и распакуй.</p>
+    <p class="muted"><strong>2.</strong> Запусти из папки с <code>ciadpi.exe</code>:</p>
+    <pre id="dpiCmd" class="diag-out cmd"></pre>
+    <button id="dpiCopyBtn" class="secondary">Скопировать команду</button>
+    <button id="dpiProbeBtn">Проверить, запущен ли ciadpi</button>
+    <button id="dpiSaveBtn">Сохранить</button>
+
+    <p class="muted" style="margin-top:12px"><strong>3.</strong> Чтобы не держать
+    консоль открытой и переживать перезагрузку — установи службой Windows
+    (файл ниже сохранить как <code>.bat</code> и запустить от администратора):</p>
+    <pre id="dpiBat" class="diag-out cmd"></pre>
+    <button id="dpiBatBtn" class="secondary">Скачать flicker-dpi-service.bat</button>
+
+    <p class="muted" style="margin-top:12px"><strong>4.</strong> В popup на вкладке
+    «Серверы» выбери <strong>«DPI-обход (локально, без сервера)»</strong> и нажми
+    «Подключиться». Native host и VPN-сервер для этого режима не нужны.</p>
+
+    <hr style="margin:18px 0;opacity:.25">
+    <h3>Альтернативный движок: GoodbyeDPI (прозрачный, системный)</h3>
+    <p class="muted" id="gdpiDesc"></p>
+
+    <div class="row">
+      <label for="gdpiPreset">Режим:</label>
+      <select id="gdpiPreset"></select>
+    </div>
+    <div class="row">
+      <label for="gdpiArgs">Свои аргументы (пусто = пресет):</label>
+      <textarea id="gdpiArgs" rows="2" class="subs-urls" spellcheck="false"></textarea>
+    </div>
+    <div id="gdpiArgsMsg" class="diag-out"></div>
+
+    <p class="muted"><strong>1.</strong> Скачай <code>goodbyedpi-0.2.2.zip</code>
+    с <a href="https://github.com/ValdikSS/GoodbyeDPI/releases" target="_blank" rel="noreferrer">github.com/ValdikSS/GoodbyeDPI/releases</a>
+    и распакуй (<code>goodbyedpi.exe</code>, Apache-2.0; драйвер WinDivert — LGPL-3.0).</p>
+    <p class="muted"><strong>2.</strong> Консольный запуск (из папки с <code>goodbyedpi.exe</code>):</p>
+    <pre id="gdpiCmd" class="diag-out cmd"></pre>
+    <button id="gdpiCopyBtn" class="secondary">Скопировать команду</button>
+    <p class="muted" style="margin-top:12px"><strong>3.</strong> Или установи службой Windows —
+    .bat сам скачает чёрный список РФ (antizapret) и зарегистрирует службу
+    <code>FlickerGoodbyeDPI</code> (запуск от администратора):</p>
+    <pre id="gdpiBat" class="diag-out cmd"></pre>
+    <button id="gdpiBatBtn" class="secondary">Скачать flicker-goodbyedpi-service.bat</button>
+    <p class="muted" style="margin-top:10px">GoodbyeDPI работает на уровне ОС для всех
+    программ — прокси FLICKER не нужен: в popup сервер можно не подключать вовсе.
+    Для одного и того же трафика используй что-то одно: ByeDPI-режим FLICKER
+    <em>или</em> GoodbyeDPI.</p>
+  </div>
+
+  <div class="group">
+    <h2>🩺 Диагностика</h2>
+    <p class="muted">Проверка связи с native host и состояния туннеля.</p>
+    <button id="diagBtn">Запустить диагностику</button>
+    <div id="diagOut" class="diag-out">Результат появится здесь…</div>
+  </div>
+
+  <div class="group">
+    <h2>📈 Рейтинг нод</h2>
+    <p class="muted">Каждая нода копит историю: реальную скорость сессий,
+    задержку, обрывы. Подключение идёт сразу к лучшей ноде, а повторный прогрев
+    запускается только для новых и давно не проверенных. Замеры стареют —
+    недельная давность весит вдвое меньше свежего.</p>
+    <div id="ratingSummary" class="diag-out">Загрузка…</div>
+    <button id="ratingRefreshBtn" class="secondary">Обновить</button>
+    <button id="ratingResetBtn" class="danger">Сбросить историю</button>
+  </div>
+
+  <div class="group">
+    <h2>🔌 Локальный SOCKS5</h2>
+    <div class="row">
+      <label for="socksPort">Порт SOCKS5 (127.0.0.1):</label>
+      <input type="number" id="socksPort" min="1" max="65535" value="1080">
+      <button id="savePortBtn">Сохранить</button>
+    </div>
+    <p class="muted">Меняйте, если порт 1080 занят другим приложением.</p>
+  </div>
+
+  <div class="group">
+    <h2>🗑 Данные</h2>
+    <p class="muted">Удаление всех сохранённых серверов и настроек расширения.</p>
+    <button id="resetBtn" class="danger">Сбросить все настройки</button>
+  </div>
+
+  <div class="group">
+    <h2>ℹ️ Информация</h2>
+    <ul>
+      <li><strong>Версия:</strong> <span id="verVal">—</span></li>
+      <li><strong>Протоколы:</strong> VLESS+Reality (Vision/uTLS), Trojan, VMess, Shadowsocks, WireGuard (включая «матрёшку» WG-в-VLESS), Direct (диагностика); Hysteria 2 — экспериментальный запасной</li>
+      <li><strong>Возможности:</strong> автопоиск серверов из подписок, многоэтапная проверка (TCP → TLS/QUIC → HTTP через туннель), GeoIP, рейтинг нод по реальным сессиям, Kill Switch, маршрутизация per-request (Smart / только заблокированное / всё), автопереключение</li>
+      <li><strong>Маршрутизация:</strong> через VPN идёт только нужное — режим меняется в popup → ⚙️ Advanced → «Что пускать через VPN». На бесплатных нодах это главный источник скорости.</li>
+      <li><strong>Native host:</strong> <code>com.flicker.vpn</code> → установка: <code>native/install.sh</code> (Linux/macOS) или <code>native/install.ps1</code> (Windows)</li>
+      <li><strong>Логи расширения:</strong> about:debugging → This Firefox → Inspect</li>
+      <li><strong>Логи native host:</strong> <code>flicker-host -logfile /tmp/flicker.log</code></li>
+    </ul>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
+

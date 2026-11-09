@@ -1,4 +1,4 @@
-name: Build APK
+name: Build FlickerVPN
 
 on:
   push:
@@ -12,24 +12,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive  # Качает вложенные сабмодули (sing-box / libbox), если они есть
 
-      - name: Set up JDK 17
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'     # Требуется для сборки sing-box 1.10+ / 1.14
+
+      - name: Set up Java / JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
+      - name: Set up Android NDK
+        uses: niku/setup-android-ndk@v1
+        with:
+          ndk-version: r25b
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build Debug APK with Stacktrace
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: FlickerVPN-debug
+          path: app/build/outputs/apk/debug/*.apk

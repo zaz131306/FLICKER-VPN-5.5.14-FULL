@@ -1,11 +1,13 @@
-name: Manual Test
+name: Test
+
 on:
-  workflow_dispatch: # Эта строка включает кнопку ручного запуска
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: Run a script
-        run: echo "Action is running!"
+      - name: Run
+        run: echo "hello"

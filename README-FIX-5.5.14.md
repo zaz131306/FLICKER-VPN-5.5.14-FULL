@@ -1,5 +1,5 @@
 # FLICKER VPN 5.5.14 — разбор шестой диагностики и что починено
-
+[![Build & Tests](https://github.com/zaz131306/FLICKER-VPN-5.5.14-FULL/actions/workflows/test.yml/badge.svg)](https://github.com/zaz131306/FLICKER-VPN-5.5.14-FULL/actions/workflows/test.yml)
 Расширение **5.5.14**, native host **5.5.4** (Go-исходников хоста нет — все правки
 на стороне расширения, сам хост не менялся).
 
